@@ -1,0 +1,11 @@
+{
+  "description": "Track habits and keep the streak alive",
+  "icon": {
+    "emoji": "🔥"
+  },
+  "secrets": [],
+  "governance": {
+    "preset": "you_or_the_group"
+  },
+  "tests": []
+}
