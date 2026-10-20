@@ -124,6 +124,11 @@ h1 {margin:0;font-size:28px;line-height:36px;font-weight:700;letter-spacing:-.01
 .hab.is-editing .count {margin-left:auto}
 .rm {padding:0 12px;font-size:14px}
 
+/* A done row: the name, flames and streak are the tap target, and a small
+   Undo button sits where the filled tick was. */
+.hab-tap {display:flex;align-items:center;gap:12px;flex:1;min-width:0;min-height:44px;border:0;background:none;padding:0;font:inherit;color:inherit;text-align:left}
+.undo {padding:0 12px;font-size:14px;color:rgb(var(--muted));flex:none}
+
 /* Inline confirmation, on the row itself. */
 .confirm-row {
   display:flex;
@@ -137,8 +142,8 @@ h1 {margin:0;font-size:28px;line-height:36px;font-weight:700;letter-spacing:-.01
 .confirm-actions {display:flex;gap:8px;margin-left:auto}
 
 /* Keyboard focus stays visible on every control, rows included. */
-.hab:focus-visible,.rm:focus-visible,.confirm-row button:focus-visible,.btn-primary:focus-visible,.btn-secondary:focus-visible,.field:focus-visible {
+.hab:focus-visible,.hab-tap:focus-visible,.rm:focus-visible,.undo:focus-visible,.confirm-row button:focus-visible,.btn-primary:focus-visible,.btn-secondary:focus-visible,.field:focus-visible {
   outline:2px solid rgb(var(--focus));
   outline-offset:2px;
 }
-.hab:focus-visible {outline-offset:-2px}
+.hab:focus-visible,.hab-tap:focus-visible {outline-offset:-2px}

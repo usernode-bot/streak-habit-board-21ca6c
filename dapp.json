@@ -31,6 +31,12 @@
       "expectText": "done this week"
     },
     {
+      "name": "Undo a habit done today",
+      "path": "/?demo=1",
+      "expectSelector": ".undo",
+      "expectText": "Undo"
+    },
+    {
       "name": "Health",
       "path": "/health",
       "expectText": "ok"
