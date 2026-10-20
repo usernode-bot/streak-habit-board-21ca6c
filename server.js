@@ -216,6 +216,31 @@ function requestDay(req) {
   return raw;
 }
 
+// The Monday of the week `day` falls in, as YYYY-MM-DD. The viewer's own
+// calendar week, worked out from the day the page sent (their local date),
+// never from NOW() or CURRENT_DATE.
+function weekStart(day) {
+  const dow = parseDay(day).getUTCDay(); // 0 = Sunday
+  return shiftDay(day, -((dow + 6) % 7));
+}
+
+// How many times this board's habits were marked from Monday through `day`:
+// the weekly line above the list. Scoped to the same habits the board shows
+// (`demo` picks demo rows or the account's own), so it never counts another
+// board's days.
+async function weekSummary(userId, demo, day) {
+  const start = weekStart(day);
+  const { rows } = await pool.query(
+    `SELECT count(*)::int AS completed
+     FROM habit_days d
+     JOIN habits h ON h.id = d.habit_id
+     WHERE h.user_id = $1 AND h.is_demo = $2
+       AND d.day BETWEEN $3::date AND $4::date`,
+    [userId, demo, start, day]
+  );
+  return { start, completed: rows[0].completed };
+}
+
 // The run of consecutive marked days ending at `day` when today is marked,
 // else ending yesterday, else 0.
 function streakOf(days, day, doneToday) {
@@ -255,7 +280,7 @@ async function habitsFor(userId, demo, day) {
 
 async function habitFor(userId, id, day) {
   const { rows } = await pool.query(
-    `SELECT id, name FROM habits WHERE id = $1 AND user_id = $2`,
+    `SELECT id, name, is_demo FROM habits WHERE id = $1 AND user_id = $2`,
     [id, userId]
   );
   if (!rows.length) return null;
@@ -265,7 +290,13 @@ async function habitFor(userId, id, day) {
   );
   const days = new Set(dayRows.map((r) => r.day));
   const doneToday = days.has(day);
-  return { id: rows[0].id, name: rows[0].name, doneToday, streak: streakOf(days, day, doneToday) };
+  return {
+    id: rows[0].id,
+    name: rows[0].name,
+    is_demo: rows[0].is_demo,
+    doneToday,
+    streak: streakOf(days, day, doneToday),
+  };
 }
 
 const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
@@ -320,7 +351,10 @@ app.get('/api/habits', wrap(async (req, res) => {
   if (!day) return res.status(400).json({ error: 'invalid_today' });
   const demo = wantsDemo(req);
   if (demo && IS_STAGING) await writeDemo(req.user.id, day);
-  return res.json({ habits: await habitsFor(req.user.id, demo, day) });
+  return res.json({
+    habits: await habitsFor(req.user.id, demo, day),
+    week: await weekSummary(req.user.id, demo, day),
+  });
 }));
 
 app.post('/api/habits', wrap(async (req, res) => {
@@ -338,12 +372,15 @@ app.post('/api/habits', wrap(async (req, res) => {
 app.delete('/api/habits/:id', wrap(async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'account_required' });
   if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'invalid_id' });
-  const { rowCount } = await pool.query(
-    `DELETE FROM habits WHERE id = $1 AND user_id = $2`,
+  // The week figure is for the line above the list; a missing day only means
+  // this request did not ask about one, so fall back to the request's UTC date.
+  const day = requestDay(req) || dayString(req.now);
+  const { rows } = await pool.query(
+    `DELETE FROM habits WHERE id = $1 AND user_id = $2 RETURNING is_demo`,
     [req.params.id, req.user.id]
   );
-  if (!rowCount) return res.status(404).json({ error: 'not_found' });
-  return res.json({ ok: true });
+  if (!rows.length) return res.status(404).json({ error: 'not_found' });
+  return res.json({ ok: true, week: await weekSummary(req.user.id, rows[0].is_demo, day) });
 }));
 
 app.put('/api/habits/:id/days/:day', wrap(async (req, res) => {
@@ -361,7 +398,8 @@ app.put('/api/habits/:id/days/:day', wrap(async (req, res) => {
     `INSERT INTO habit_days (habit_id, day) VALUES ($1, $2::date) ON CONFLICT DO NOTHING`,
     [req.params.id, day]
   );
-  return res.json(await habitFor(req.user.id, req.params.id, day));
+  const updated = await habitFor(req.user.id, req.params.id, day);
+  return res.json({ ...updated, week: await weekSummary(req.user.id, updated.is_demo, day) });
 }));
 
 app.delete('/api/habits/:id/days/:day', wrap(async (req, res) => {
@@ -379,7 +417,8 @@ app.delete('/api/habits/:id/days/:day', wrap(async (req, res) => {
     `DELETE FROM habit_days WHERE habit_id = $1 AND day = $2::date`,
     [req.params.id, day]
   );
-  return res.json(await habitFor(req.user.id, req.params.id, day));
+  const updated = await habitFor(req.user.id, req.params.id, day);
+  return res.json({ ...updated, week: await weekSummary(req.user.id, updated.is_demo, day) });
 }));
 
 // HTML shell: serve the app if authenticated. Unauthenticated top-level

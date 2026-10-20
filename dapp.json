@@ -26,6 +26,11 @@
       ]
     },
     {
+      "name": "Weekly summary",
+      "path": "/?demo=1",
+      "expectText": "done this week"
+    },
+    {
       "name": "Health",
       "path": "/health",
       "expectText": "ok"

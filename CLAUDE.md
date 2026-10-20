@@ -97,12 +97,15 @@ tables you've marked private), etc.
 
 Track habits and keep the streak alive.
 
-The app is one board of the viewer's own habits. Each habit shows its
-current streak in days and one small flame pip per day of that streak. Tap
-a habit to mark it done for today (the tick circle fills, the streak grows,
-the row moves to "Done today"); tap it again to undo. Habits are added at
-the bottom, and removed behind the header's Edit button. Only today can be
-marked: past days are not editable, and a missed day resets the streak.
+The app is one board of the viewer's own habits. Under the date, a line
+says how many habits are done today and another how many times the
+board's habits were ticked since Monday ("11 done this week"). Each habit
+shows its current streak in days and one small flame pip per day of that
+streak. Tap a habit to mark it done for today (the tick circle fills, the
+streak grows, the row moves to "Done today"); tap it again to undo. Habits
+are added at the bottom, and removed behind the header's Edit button. Only
+today can be marked: past days are not editable, and a missed day resets
+the streak.
 
 ## Design
 
@@ -159,6 +162,11 @@ Re-theme by changing the token values there, keeping every text pair at
 - **Both tables are private**: `habits` and `habit_days` carry
   `staging:private`, because they are personal data. Every route is scoped
   to `req.user.id`.
+- **"This week" starts on Monday** and runs through the `today` the page
+  sent, counted from the `habit_days` rows the streaks already use and
+  scoped to the same habits the board shows (demo rows for `?demo=1`, the
+  account's own otherwise). It is returned as `week: { start, completed }`
+  by `GET /api/habits` and by the writes that change it.
 - **Only today can be marked or unmarked.** A write to any other day is
   rejected with 400.
 - **Demo rows** (`is_demo = true`, written once per account on a staging

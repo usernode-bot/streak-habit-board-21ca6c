@@ -38,9 +38,14 @@ h1 {margin:0;font-size:28px;line-height:36px;font-weight:700;letter-spacing:-.01
 
 .sub {font-size:14px;line-height:20px;color:rgb(var(--muted));margin:2px 0 12px}
 
-.sum {display:flex;align-items:center;gap:6px;font-size:14px;line-height:20px;color:rgb(var(--muted));margin-bottom:20px}
+.sum {display:flex;align-items:center;gap:6px;font-size:14px;line-height:20px;color:rgb(var(--muted));margin-bottom:4px}
 
 .sum .ic {color:rgb(var(--flame))}
+
+/* The weekly line sits under the today line, above the habit list. */
+.week {font-size:14px;line-height:20px;color:rgb(var(--muted));margin:0 0 20px}
+
+.week b {font-weight:700;color:rgb(var(--fg))}
 
 .section-label {display:block;font-size:14px;line-height:20px;font-weight:500;color:rgb(var(--muted));margin:0 0 8px;padding:0 4px}
 

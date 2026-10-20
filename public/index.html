@@ -125,6 +125,7 @@
     <div class="hd"><h1>Streak Habit Board</h1><button type="button" class="btn-secondary" id="edit-btn" hidden>Edit</button></div>
     <p class="sub" id="today-label"></p>
     <div class="sum" id="summary" hidden><svg class="ic" viewBox="0 0 24 24"><path d="M12 3c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"/></svg><span id="summary-text"></span></div>
+    <p class="week" id="week-summary" hidden></p>
     <div id="loading" role="status" aria-label="Loading your habits">
       <div class="list">
         <div class="list-row"><span class="main"><span class="skeleton sk-bar"></span><span class="skeleton sk-bar sk-short"></span></span><span class="skeleton sk-ck"></span></div>
@@ -186,7 +187,7 @@
     function el(id) { return document.getElementById(id); }
     var ui = {
       demo: el('demo-note'), edit: el('edit-btn'), today: el('today-label'),
-      summary: el('summary'), summaryText: el('summary-text'),
+      summary: el('summary'), summaryText: el('summary-text'), week: el('week-summary'),
       loading: el('loading'), empty: el('empty'), error: el('error'),
       board: el('board'), todoSection: el('todo-section'), todoList: el('todo-list'),
       doneSection: el('done-section'), doneList: el('done-list'),
@@ -239,7 +240,7 @@
     }
     function dayWord(n) { return n === 1 ? 'day' : 'days'; }
 
-    var state = { habits: [], status: 'loading', editing: false, busy: false, confirmId: null };
+    var state = { habits: [], week: { completed: 0 }, status: 'loading', editing: false, busy: false, confirmId: null };
 
     function find(id) {
       for (var i = 0; i < state.habits.length; i++) if (state.habits[i].id === id) return state.habits[i];
@@ -295,11 +296,21 @@
       ui.addSection.hidden = !shown;
       ui.edit.hidden = !shown;
       ui.summary.hidden = !shown;
+      ui.week.hidden = !shown;
       ui.edit.textContent = state.editing ? 'Done' : 'Edit';
 
       if (shown) {
         var doneCount = list.filter(function (h) { return h.doneToday; }).length;
         ui.summaryText.textContent = doneCount + ' of ' + list.length + ' done today';
+
+        // How many times these habits were ticked since Monday, counted by
+        // the server from the same habit_days rows the streaks use.
+        var weekDone = state.week && state.week.completed ? state.week.completed : 0;
+        if (weekDone > 0) {
+          ui.week.innerHTML = '<b>' + weekDone + '</b> done this week';
+        } else {
+          ui.week.textContent = 'Nothing done this week yet';
+        }
 
         var todo = list.filter(function (h) { return !h.doneToday; });
         var done = list.filter(function (h) { return h.doneToday; });
@@ -347,6 +358,7 @@
       var q = '/api/habits?today=' + encodeURIComponent(TODAY) + (DEMO ? '&demo=1' : '');
       api(q).then(function (data) {
         state.habits = Array.isArray(data.habits) ? data.habits : [];
+        state.week = data.week || { completed: 0 };
         state.status = 'ready';
         render();
       }).catch(function () {
@@ -360,8 +372,11 @@
       var h = find(id);
       if (!h) return;
       var before = { doneToday: h.doneToday, streak: h.streak };
+      var beforeWeek = state.week && state.week.completed ? state.week.completed : 0;
       h.doneToday = !before.doneToday;
       h.streak = Math.max(0, before.streak + (h.doneToday ? 1 : -1));
+      // Today is part of this week, so the weekly line moves with the tap.
+      state.week = { completed: Math.max(0, beforeWeek + (h.doneToday ? 1 : -1)) };
       clearSaveError();
       setBusy(true);
       render(id);
@@ -373,6 +388,7 @@
           current.doneToday = updated.doneToday;
           current.streak = updated.streak;
         }
+        if (updated.week) state.week = updated.week;
         setBusy(false);
         render(id);
       }).catch(function () {
@@ -381,6 +397,7 @@
           current.doneToday = before.doneToday;
           current.streak = before.streak;
         }
+        state.week = { completed: beforeWeek };
         setBusy(false);
         render(id);
         saveError("That wasn't saved. Try again.");
@@ -391,8 +408,9 @@
       if (state.busy) return;
       clearSaveError();
       setBusy(true);
-      api('/api/habits/' + id, { method: 'DELETE' }).then(function () {
+      api('/api/habits/' + id + '?today=' + encodeURIComponent(TODAY), { method: 'DELETE' }).then(function (data) {
         state.habits = state.habits.filter(function (h) { return h.id !== id; });
+        if (data && data.week) state.week = data.week;
         if (state.habits.length === 0) state.editing = false;
         state.confirmId = null;
         setBusy(false);
