@@ -78,6 +78,7 @@
        classes, swap this link for the platform-hosted engine instead:
        <script src="/usernode-tailwind/v1/tailwind.js"></script> -->
   <link rel="stylesheet" href="/tailwind.css">
+  <link rel="stylesheet" href="/screens.css">
   <!-- The platform bridge, centrally hosted and loaded by RELATIVE path (the
        handler in server.js serves it under a plain "node server.js"; the
        platform's edge answers it everywhere else). Never vendor it and never
@@ -115,21 +116,358 @@
   <!-- (Named in prose on purpose: Tailwind compiles any class-name word in
        these files, comments included, and the starter should ship only the
        components its screen uses.) -->
-  <main class="mx-auto flex max-w-md flex-col gap-8 px-4 py-10">
+  <!-- usernode-spec-screens@1: the screens the spec drew, carried over by the platform as this
+       first version's starting point. Their styles are in public/screens.css.
+       Change them where behaviour needs it; do not redraw them. -->
+  <div data-spec-screen="1">
+    <div class="app">
+    <p class="demo-note" id="demo-note" data-usernode-demo-note hidden>Staging demo</p>
+    <div class="hd"><h1>Streak Habit Board</h1><button type="button" class="btn-secondary" id="edit-btn" hidden>Edit</button></div>
+    <p class="sub" id="today-label"></p>
+    <div class="sum" id="summary" hidden><svg class="ic" viewBox="0 0 24 24"><path d="M12 3c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 2-4 0 2 1 3 2 3 0-4-1-6 1-10z"/></svg><span id="summary-text"></span></div>
+    <div id="loading" role="status" aria-label="Loading your habits">
+      <div class="list">
+        <div class="list-row"><span class="main"><span class="skeleton sk-bar"></span><span class="skeleton sk-bar sk-short"></span></span><span class="skeleton sk-ck"></span></div>
+        <div class="list-row"><span class="main"><span class="skeleton sk-bar"></span><span class="skeleton sk-bar sk-short"></span></span><span class="skeleton sk-ck"></span></div>
+        <div class="list-row"><span class="main"><span class="skeleton sk-bar"></span><span class="skeleton sk-bar sk-short"></span></span><span class="skeleton sk-ck"></span></div>
+        <div class="list-row"><span class="main"><span class="skeleton sk-bar"></span><span class="skeleton sk-bar sk-short"></span></span><span class="skeleton sk-ck"></span></div>
+        <div class="list-row"><span class="main"><span class="skeleton sk-bar"></span><span class="skeleton sk-bar sk-short"></span></span><span class="skeleton sk-ck"></span></div>
+      </div>
+    </div>
 
-    <!-- usernode-starter-notice@1 — starter-template messaging. When building
-         the user's real app, replace this whole screen and delete this block,
-         both sentinel comments included. -->
-    <section class="card flex flex-col items-start gap-3">
-      <div class="flex h-20 w-20 items-center justify-center rounded-2xl border border-line bg-ground text-title">🔥</div>
-      <span class="rounded-full bg-raised px-3 py-1 text-small font-medium text-muted">Starter template</span>
-      <h1 class="text-title">Streak Habit Board</h1>
-      <p class="text-body text-muted">Welcome to your new app! Everything on this screen is placeholder content that came with it.</p>
-      <p class="text-body text-muted">To change this app, ask Homeroom bot: tap the <strong class="font-semibold text-fg">Homeroom icon</strong>, then <strong class="font-semibold text-fg">Suggest an improvement</strong>. Describe what you'd like in plain English, and it will be turned into your real app.</p>
-    </section>
-    <!-- /usernode-starter-notice@1 -->
+    <div class="state-empty" id="empty" hidden>
+      <p class="state-title">No habits yet</p>
+      <p class="state-copy">Add a habit, then tick it each day. A streak grows with every day in a row you do it.</p>
+      <form class="add empty-add" id="empty-form" novalidate>
+        <input class="field" id="empty-name" name="name" placeholder="e.g. Read 20 pages" maxlength="60" autocomplete="off" aria-label="Habit name">
+        <button class="btn-primary" type="submit">Add habit</button>
+      </form>
+      <p class="form-error" id="empty-error" role="alert" hidden></p>
+    </div>
 
-    <p class="text-center text-small text-muted">Built on Homeroom. This template screen disappears once you build your real app.</p>
-  </main>
+    <div class="state-error" id="error" hidden>
+      <p class="state-title">Your habits couldn't be loaded</p>
+      <p class="state-copy">Nothing was changed. Check your connection, then try again.</p>
+      <button type="button" class="btn-secondary" id="retry">Retry</button>
+    </div>
+
+    <div id="board" hidden>
+      <div id="todo-section">
+        <div class="section-label">To do today, tap a habit when it is done</div>
+        <ul class="list" id="todo-list"></ul>
+      </div>
+      <div id="done-section">
+        <div class="section-label">Done today, tap again to undo</div>
+        <ul class="list" id="done-list"></ul>
+      </div>
+    </div>
+    <p class="save-error" id="save-error" role="status" hidden></p>
+
+    <div id="add-section" hidden>
+      <label class="section-label" for="new-habit">Add a habit</label>
+      <form class="add" id="add-form" novalidate>
+        <input class="field" id="new-habit" name="name" placeholder="e.g. Walk after lunch" maxlength="60" autocomplete="off">
+        <button class="btn-secondary" type="submit">Add</button>
+      </form>
+      <p class="form-error" id="add-error" role="alert" hidden></p>
+    </div>
+    </div>
+  </div>
+  <!-- /usernode-spec-screens@1 -->
+  <script>
+  (function () {
+    var params = new URLSearchParams(location.search);
+    var TOKEN = params.get('token');
+    var DEMO = params.get('demo') === '1';
+
+    var FLAME = '<svg viewBox="0 0 10 14"><path d="M5 0c1 3 4 5 4 9a4 4 0 0 1-8 0c0-2 1-3 2-3 0 2 1 2 1 2 0-3-1-5 1-8z"/></svg>';
+    var TICK = '<svg class="ic" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+
+    function el(id) { return document.getElementById(id); }
+    var ui = {
+      demo: el('demo-note'), edit: el('edit-btn'), today: el('today-label'),
+      summary: el('summary'), summaryText: el('summary-text'),
+      loading: el('loading'), empty: el('empty'), error: el('error'),
+      board: el('board'), todoSection: el('todo-section'), todoList: el('todo-list'),
+      doneSection: el('done-section'), doneList: el('done-list'),
+      saveError: el('save-error'), addSection: el('add-section'),
+      addForm: el('add-form'), addInput: el('new-habit'), addError: el('add-error'),
+      emptyForm: el('empty-form'), emptyInput: el('empty-name'), emptyError: el('empty-error'),
+      retry: el('retry')
+    };
+
+    function nowDate() {
+      var n = window.usernode && typeof window.usernode.now === 'function' ? window.usernode.now() : null;
+      return n instanceof Date ? n : new Date();
+    }
+    function pad(n) { return (n < 10 ? '0' : '') + n; }
+    function localDay(d) { return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+    function dateLabel(d) {
+      try {
+        return d.toLocaleDateString('en-GB', { weekday: 'long' }) + ', ' +
+          d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+      } catch (e) { return ''; }
+    }
+
+    // The viewer's own calendar day, fixed for this visit.
+    var START = nowDate();
+    var TODAY = localDay(START);
+    ui.today.textContent = dateLabel(START);
+
+    function api(path, opts) {
+      opts = opts || {};
+      var headers = { Accept: 'application/json' };
+      if (opts.body) headers['Content-Type'] = 'application/json';
+      if (TOKEN) headers['x-usernode-token'] = TOKEN;
+      if (window.usernode && window.usernode.previewNow) {
+        headers['x-usernode-now'] = usernode.now().toISOString();
+      }
+      return fetch(path, {
+        method: opts.method || 'GET',
+        headers: headers,
+        body: opts.body ? JSON.stringify(opts.body) : undefined
+      }).then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      });
+    }
+
+    function esc(s) {
+      return String(s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+    function dayWord(n) { return n === 1 ? 'day' : 'days'; }
+
+    var state = { habits: [], status: 'loading', editing: false, busy: false, confirmId: null };
+
+    function find(id) {
+      for (var i = 0; i < state.habits.length; i++) if (state.habits[i].id === id) return state.habits[i];
+      return null;
+    }
+
+    function pipsHtml(streak) {
+      var n = Math.min(streak, 14);
+      var out = '';
+      for (var i = 0; i < n; i++) out += FLAME;
+      return '<span class="pips' + (n === 0 ? ' none' : '') + '">' + (n === 0 ? FLAME : out) + '</span>';
+    }
+
+    function rowHtml(h) {
+      var label = h.name + ', ' + h.streak + ' ' + dayWord(h.streak) + ', ' +
+        (h.doneToday ? 'done today. Tap to undo.' : 'tap to mark done today.');
+      if (state.editing) {
+        return '<div class="list-row hab is-editing">' +
+          '<span class="main"><span class="name">' + esc(h.name) + '</span>' + pipsHtml(h.streak) + '</span>' +
+          '<span class="count"><b>' + h.streak + '</b><span>' + dayWord(h.streak) + '</span></span>' +
+          '<button type="button" class="btn-secondary rm" data-action="remove" data-id="' + h.id + '">Remove</button>' +
+          '</div>';
+      }
+      return '<button type="button" class="list-row hab' + (h.doneToday ? ' is-done' : '') + '"' +
+        ' data-action="toggle" data-id="' + h.id + '"' +
+        ' aria-pressed="' + (h.doneToday ? 'true' : 'false') + '"' +
+        ' aria-label="' + esc(label) + '">' +
+        '<span class="main"><span class="name">' + esc(h.name) + '</span>' + pipsHtml(h.streak) + '</span>' +
+        '<span class="count"><b>' + h.streak + '</b><span>' + dayWord(h.streak) + '</span></span>' +
+        '<span class="ck">' + TICK + '</span></button>';
+    }
+
+    function confirmHtml(h) {
+      return '<div class="confirm-row">' +
+        '<span class="confirm-q">Remove “' + esc(h.name) + '”?</span>' +
+        '<span class="confirm-actions">' +
+        '<button type="button" class="btn-secondary" data-action="cancel" data-id="' + h.id + '">Cancel</button>' +
+        '<button type="button" class="btn-secondary" data-action="confirm" data-id="' + h.id + '">Remove</button>' +
+        '</span></div>';
+    }
+
+    function render(focusId) {
+      var ready = state.status === 'ready';
+      var list = state.habits;
+      var none = ready && list.length === 0;
+      var shown = ready && !none;
+
+      ui.demo.hidden = !DEMO;
+      ui.loading.hidden = state.status !== 'loading';
+      ui.error.hidden = state.status !== 'error';
+      ui.empty.hidden = !none;
+      ui.board.hidden = !shown;
+      ui.addSection.hidden = !shown;
+      ui.edit.hidden = !shown;
+      ui.summary.hidden = !shown;
+      ui.edit.textContent = state.editing ? 'Done' : 'Edit';
+
+      if (shown) {
+        var doneCount = list.filter(function (h) { return h.doneToday; }).length;
+        ui.summaryText.textContent = doneCount + ' of ' + list.length + ' done today';
+
+        var todo = list.filter(function (h) { return !h.doneToday; });
+        var done = list.filter(function (h) { return h.doneToday; });
+        ui.todoList.innerHTML = todo.map(function (h) {
+          return '<li data-row="' + h.id + '">' + (state.confirmId === h.id ? confirmHtml(h) : rowHtml(h)) + '</li>';
+        }).join('');
+        ui.doneList.innerHTML = done.map(function (h) {
+          return '<li data-row="' + h.id + '">' + (state.confirmId === h.id ? confirmHtml(h) : rowHtml(h)) + '</li>';
+        }).join('');
+        ui.todoSection.hidden = todo.length === 0;
+        ui.doneSection.hidden = done.length === 0;
+      }
+
+      applyDisabled();
+
+      if (focusId) {
+        var again = ui.board.querySelector('[data-action="toggle"][data-id="' + focusId + '"]') ||
+          ui.board.querySelector('[data-id="' + focusId + '"]');
+        if (again) again.focus();
+      }
+    }
+
+    function applyDisabled() {
+      var list = ui.board.querySelectorAll('button');
+      for (var i = 0; i < list.length; i++) list[i].disabled = state.busy;
+      [ui.edit, ui.retry, ui.addForm.querySelector('input'), ui.addForm.querySelector('button'),
+        ui.emptyForm.querySelector('input'), ui.emptyForm.querySelector('button')].forEach(function (node) {
+        node.disabled = state.busy;
+      });
+    }
+
+    function setBusy(on) { state.busy = on; applyDisabled(); }
+
+    function saveError(message) {
+      ui.saveError.textContent = message;
+      ui.saveError.hidden = false;
+    }
+    function clearSaveError() { ui.saveError.hidden = true; }
+
+    function load() {
+      state.status = 'loading';
+      state.editing = false;
+      state.confirmId = null;
+      render();
+      var q = '/api/habits?today=' + encodeURIComponent(TODAY) + (DEMO ? '&demo=1' : '');
+      api(q).then(function (data) {
+        state.habits = Array.isArray(data.habits) ? data.habits : [];
+        state.status = 'ready';
+        render();
+      }).catch(function () {
+        state.status = 'error';
+        render();
+      });
+    }
+
+    function toggle(id) {
+      if (state.busy) return;
+      var h = find(id);
+      if (!h) return;
+      var before = { doneToday: h.doneToday, streak: h.streak };
+      h.doneToday = !before.doneToday;
+      h.streak = Math.max(0, before.streak + (h.doneToday ? 1 : -1));
+      clearSaveError();
+      setBusy(true);
+      render(id);
+      api('/api/habits/' + id + '/days/' + TODAY + '?today=' + encodeURIComponent(TODAY), {
+        method: before.doneToday ? 'DELETE' : 'PUT'
+      }).then(function (updated) {
+        var current = find(id);
+        if (current) {
+          current.doneToday = updated.doneToday;
+          current.streak = updated.streak;
+        }
+        setBusy(false);
+        render(id);
+      }).catch(function () {
+        var current = find(id);
+        if (current) {
+          current.doneToday = before.doneToday;
+          current.streak = before.streak;
+        }
+        setBusy(false);
+        render(id);
+        saveError("That wasn't saved. Try again.");
+      });
+    }
+
+    function removeHabit(id) {
+      if (state.busy) return;
+      clearSaveError();
+      setBusy(true);
+      api('/api/habits/' + id, { method: 'DELETE' }).then(function () {
+        state.habits = state.habits.filter(function (h) { return h.id !== id; });
+        if (state.habits.length === 0) state.editing = false;
+        state.confirmId = null;
+        setBusy(false);
+        render();
+      }).catch(function () {
+        state.confirmId = null;
+        setBusy(false);
+        render();
+        saveError("That habit wasn't removed. Try again.");
+      });
+    }
+
+    function submitHabit(input, errorEl, afterFocus) {
+      clearSaveError();
+      var name = input.value.trim();
+      errorEl.hidden = true;
+      if (!name) {
+        errorEl.textContent = 'Give the habit a name.';
+        errorEl.hidden = false;
+        input.focus();
+        return;
+      }
+      if (name.length > 60) {
+        errorEl.textContent = 'Keep the name to 60 characters or fewer.';
+        errorEl.hidden = false;
+        input.focus();
+        return;
+      }
+      if (state.busy) return;
+      setBusy(true);
+      api('/api/habits?today=' + encodeURIComponent(TODAY) + (DEMO ? '&demo=1' : ''), {
+        method: 'POST',
+        body: { name: name }
+      }).then(function (created) {
+        state.habits.push(created);
+        input.value = '';
+        setBusy(false);
+        render();
+        if (afterFocus && !afterFocus.closest('[hidden]')) afterFocus.focus();
+      }).catch(function () {
+        setBusy(false);
+        errorEl.textContent = "That habit wasn't added. Try again.";
+        errorEl.hidden = false;
+      });
+    }
+
+    ui.board.addEventListener('click', function (event) {
+      var button = event.target.closest('button');
+      if (!button || button.disabled) return;
+      var id = Number(button.getAttribute('data-id'));
+      var action = button.getAttribute('data-action');
+      if (action === 'toggle') toggle(id);
+      else if (action === 'remove') { state.confirmId = id; render(); }
+      else if (action === 'cancel') { state.confirmId = null; render(); }
+      else if (action === 'confirm') removeHabit(id);
+    });
+
+    ui.edit.addEventListener('click', function () {
+      state.editing = !state.editing;
+      state.confirmId = null;
+      render();
+    });
+
+    ui.addForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitHabit(ui.addInput, ui.addError, ui.addInput);
+    });
+    ui.emptyForm.addEventListener('submit', function (event) {
+      event.preventDefault();
+      submitHabit(ui.emptyInput, ui.emptyError, ui.addInput);
+    });
+    ui.retry.addEventListener('click', load);
+
+    load();
+  })();
+  </script>
 </body>
 </html>

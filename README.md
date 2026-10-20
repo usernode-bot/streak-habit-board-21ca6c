@@ -1,27 +1,27 @@
 # Streak Habit Board
 
-> **Starter template** — this repo was scaffolded by Homeroom Social
-> Vibecoding. Everything in it is placeholder example code until the
-> app's first real feature is built.
+A small personal habit tracker. Each habit shows a streak: how many days in
+a row you have done it. Tap a habit to mark it done for today, tap it again
+to undo.
 
-The scaffold is a small working demo that proves the plumbing works:
+- **One board, one job.** Habits still to do today come first, the ones
+  already done below them. Each row has its name, its streak count ("9
+  days") and one small flame for every day of the streak, up to 14.
+- **Add and remove.** Type a name under "Add a habit" and tap Add. Tap Edit
+  in the header to show Remove on each habit; removing asks for
+  confirmation on the row first.
+- **Streaks reset when a day is missed.** A streak counts consecutive marked
+  days ending today, or ending yesterday when today is not marked yet. Miss
+  a whole day and it goes back to 0.
+- **Personal.** Habits belong to the person signed in through Homeroom. No
+  one else in the group sees them.
 
-- **Sign-in** — the server verifies the platform-issued user token
-  (an RS256 JWT) on every request, so the app already knows who is
-  using it. No accounts to build.
-- **Database** — the app has its own private Postgres database, ready
-  to store things.
-- **Styling** — Tailwind CSS, precompiled by `npm run build` during
-  image creation with either Kubernetes/Paketo or standalone Docker, in a
-  light and a dark look that follow the viewer's Homeroom theme.
+The app runs on Homeroom. The platform supplies sign-in and the database;
+`server.js` verifies the platform's identity token, stores habits in two
+private Postgres tables (`habits`, `habit_days`) and serves the board from
+`public/index.html`.
 
-## Replacing the template
+Open the staging preview with `?demo=1` to see a populated board of nine
+sample habits, labelled "Staging demo".
 
-To change this app, ask Homeroom bot: open the app on Homeroom, tap the
-Homeroom icon in the header, then **Suggest an improvement**, and describe
-the app you want in plain English. The template will be replaced with your
-real app. You can also run
-Claude Code against this repo directly; start with `CLAUDE.md`, which
-carries the app-specific notes and points at the platform rules.
-
-Once the real app exists, rewrite this README to describe it.
+See `CLAUDE.md` for the design notes and the platform rules.
