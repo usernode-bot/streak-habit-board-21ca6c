@@ -17,7 +17,7 @@
   background: rgb(var(--ground));
   color: rgb(var(--fg));
   min-height: 900px;
-  width: 390px;
+  width: 100%;
   box-sizing: border-box;
   padding: 24px 16px 32px;
   font-family: ui-rounded,system-ui,-apple-system,sans-serif;
@@ -83,3 +83,57 @@ h1 {margin:0;font-size:28px;line-height:36px;font-weight:700;letter-spacing:-.01
 .add .field {flex:1}
 
 .ic {width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── Behaviour's own pieces ───────────────────────────────────────────
+   The demo line, the loading, empty and error states, edit mode and the
+   per-row confirm. Everything here uses the kit's tokens. */
+
+.demo-note {
+  margin: 0 0 8px;
+  padding: 4px 8px;
+  border-radius: 6px;
+  background: rgb(var(--raised));
+  color: rgb(var(--muted));
+  font-size: 14px;
+  line-height: 20px;
+  display: inline-block;
+}
+
+/* Loading: the board's own rows, with bars where its text goes. */
+.sk-bar {display:block;height:16px;width:65%}
+.sk-bar.sk-short {height:12px;width:40%;margin-top:6px}
+.sk-ck {width:32px;height:32px;border-radius:50%;flex:none}
+#loading .list-row {align-items:center}
+
+/* Empty and error states fill the board's place. */
+.state-title {margin:0;font-size:20px;line-height:28px;font-weight:600}
+.state-copy {margin:0;max-width:26rem;color:rgb(var(--muted));font-size:14px;line-height:20px}
+.state-empty .state-copy,.state-error .state-copy {margin-bottom:8px}
+.empty-add {margin-top:8px;width:100%;max-width:26rem}
+
+.form-error {margin:8px 0 0;padding:0 4px;color:rgb(var(--danger));font-size:14px;line-height:20px}
+.save-error {margin:0 0 16px;padding:0 4px;color:rgb(var(--danger));font-size:14px;line-height:20px}
+
+/* Edit mode: the row shows a Remove button in the tick's place. */
+.hab.is-editing {cursor:default}
+.hab.is-editing .count {margin-left:auto}
+.rm {padding:0 12px;font-size:14px}
+
+/* Inline confirmation, on the row itself. */
+.confirm-row {
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+  padding:12px 16px;
+  min-height:64px;
+}
+.confirm-q {flex:1;min-width:0;font-weight:600}
+.confirm-actions {display:flex;gap:8px;margin-left:auto}
+
+/* Keyboard focus stays visible on every control, rows included. */
+.hab:focus-visible,.rm:focus-visible,.confirm-row button:focus-visible,.btn-primary:focus-visible,.btn-secondary:focus-visible,.field:focus-visible {
+  outline:2px solid rgb(var(--focus));
+  outline-offset:2px;
+}
+.hab:focus-visible {outline-offset:-2px}

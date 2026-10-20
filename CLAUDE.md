@@ -95,24 +95,34 @@ tables you've marked private), etc.
 
 ## About Streak Habit Board
 
-Track habits and keep the streak alive
+Track habits and keep the streak alive.
 
-_(add a sentence or two more of product context here so Claude Code has a
-shared understanding of what this app is for)_
+The app is one board of the viewer's own habits. Each habit shows its
+current streak in days and one small flame pip per day of that streak. Tap
+a habit to mark it done for today (the tick circle fills, the streak grows,
+the row moves to "Done today"); tap it again to undo. Habits are added at
+the bottom, and removed behind the header's Edit button. Only today can be
+marked: past days are not editable, and a missed day resets the streak.
 
 ## Design
 
 This app's look. The first real version fills in the blanks; every later
 change follows it, and updates it when a request changes the look on purpose.
 
-- **Palette:** _(name the accent, any second colour and the neutrals, e.g.
-  "accent: tomato red; second: basil green; neutrals: warm greys")_
-- **Signature element:** _(the one thing on screen drawn from this app's
-  subject, which no other app would have)_
-- **Type scale:** `text-title`, `text-heading`, `text-body`, `text-small`
-  _(change their sizes in `tailwind.config.js` if you must, not their number)_
-- **One fixed look:** _(only for an app drawn as its own scene, such as a
-  game: which look, and why. Otherwise delete this line.)_
+- **Palette:** warm paper neutrals (ground `248 243 236`, surface
+  `255 255 255`, raised `241 234 224`, text `38 28 20`, muted `105 91 79`,
+  line `228 219 207`); one deep teal accent `30 94 84` for the done action,
+  with white on it; ember orange for streaks (`flame` `200 82 18`) and a
+  faint `flame-off` `226 214 199` for a streak at 0. Dark values, same
+  hues: ground `24 19 15`, surface `36 29 23`, raised `48 40 33`, text
+  `245 238 229`, muted `184 170 156`, line `66 56 47`, accent `94 196 178`
+  with `10 40 35` on it, flame `247 140 70`, flame-off `80 66 54`.
+- **Signature element:** the row of small flame pips under each habit name,
+  one per day of the streak (up to 14), growing along the row; a streak at
+  0 shows one faint, unlit flame. The header's flame mark sits beside the
+  "n of m done today" line.
+- **Type scale:** `text-title`, `text-heading`, `text-body`, `text-small`,
+  in the system rounded face (`ui-rounded, system-ui`).
 
 The kit is in `styles/tailwind-input.css`: colour tokens with a light and
 a dark value (named in `tailwind.config.js`), and a few components
@@ -142,6 +152,15 @@ Re-theme by changing the token values there, keeping every text pair at
 
 ## App-specific conventions
 
-_(optional — e.g. "all currency values stored as integer cents, not
-floats"; "the `posts` table is append-only"; "avoid adding new
-dependencies"; etc.)_
+- **"Today" is the viewer's local calendar day**, taken from
+  `usernode.now()` in the page and sent to the server as `today`
+  (`YYYY-MM-DD`). The server accepts it only within one day of the request's
+  UTC date; never use `NOW()` or `CURRENT_DATE` to decide a day or a streak.
+- **Both tables are private**: `habits` and `habit_days` carry
+  `staging:private`, because they are personal data. Every route is scoped
+  to `req.user.id`.
+- **Only today can be marked or unmarked.** A write to any other day is
+  rejected with 400.
+- **Demo rows** (`is_demo = true`, written once per account on a staging
+  `?demo=1` request) are returned only to `?demo=1` and never to a plain
+  route, so the plain board stays the production-shaped answer.

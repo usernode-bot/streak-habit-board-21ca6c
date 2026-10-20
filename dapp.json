@@ -7,5 +7,28 @@
   "governance": {
     "preset": "you_or_the_group"
   },
-  "tests": []
+  "tests": [
+    {
+      "name": "Empty board",
+      "path": "/",
+      "expectText": "No habits yet"
+    },
+    {
+      "id": "board-demo",
+      "name": "Demo board",
+      "path": "/?demo=1",
+      "expectText": "Read 20 pages",
+      "visual": true,
+      "impact": [
+        "public/**",
+        "server.js",
+        "styles/**"
+      ]
+    },
+    {
+      "name": "Health",
+      "path": "/health",
+      "expectText": "ok"
+    }
+  ]
 }

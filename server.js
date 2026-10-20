@@ -156,6 +156,232 @@ app.get('/favicon.ico', (_req, res) => res.status(204).end());
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── Habit board ─────────────────────────────────────────────────────────────
+// Two tables, both private to this app's group: a habit and the days it was
+// done. Schema is applied idempotently on every boot.
+
+async function ensureSchema() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS habits (
+      id serial PRIMARY KEY,
+      user_id text NOT NULL,
+      name text NOT NULL,
+      is_demo boolean NOT NULL DEFAULT false,
+      demo_key text,
+      created_at timestamptz NOT NULL DEFAULT NOW()
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS habits_user_demo_key_uniq
+      ON habits (user_id, demo_key);
+    COMMENT ON TABLE habits IS 'staging:private';
+    CREATE TABLE IF NOT EXISTS habit_days (
+      habit_id integer NOT NULL REFERENCES habits(id) ON DELETE CASCADE,
+      day date NOT NULL,
+      PRIMARY KEY (habit_id, day)
+    );
+    COMMENT ON TABLE habit_days IS 'staging:private';
+  `);
+}
+
+const DAY_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+// A calendar day as a UTC-midnight Date, or null when it is not a real date.
+function parseDay(raw) {
+  const m = DAY_RE.exec(raw || '');
+  if (!m) return null;
+  const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  if (d.getUTCFullYear() !== +m[1] || d.getUTCMonth() !== +m[2] - 1 || d.getUTCDate() !== +m[3]) {
+    return null;
+  }
+  return d;
+}
+
+function dayString(d) {
+  return d.toISOString().slice(0, 10);
+}
+
+function shiftDay(day, delta) {
+  return dayString(new Date(parseDay(day).getTime() + delta * 86400000));
+}
+
+// The viewer's own day, sent by the page as their device's local date. It is
+// accepted only within one day of this request's UTC date, so a wrong or
+// stale value cannot mark some other day. Never CURRENT_DATE / NOW().
+function requestDay(req) {
+  const now = req.now || new Date();
+  const utcToday = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const raw = typeof req.query.today === 'string' ? req.query.today : '';
+  if (!raw) return dayString(new Date(utcToday));
+  const parsed = parseDay(raw);
+  if (!parsed || Math.abs(parsed.getTime() - utcToday) > 86400000) return null;
+  return raw;
+}
+
+// The run of consecutive marked days ending at `day` when today is marked,
+// else ending yesterday, else 0.
+function streakOf(days, day, doneToday) {
+  let cursor = doneToday ? day : shiftDay(day, -1);
+  let streak = 0;
+  while (days.has(cursor)) {
+    streak++;
+    cursor = shiftDay(cursor, -1);
+  }
+  return streak;
+}
+
+async function habitsFor(userId, demo, day) {
+  const { rows } = await pool.query(
+    `SELECT id, name FROM habits
+     WHERE user_id = $1 AND is_demo = $2
+     ORDER BY created_at, id`,
+    [userId, demo]
+  );
+  if (!rows.length) return [];
+  const { rows: dayRows } = await pool.query(
+    `SELECT habit_id, to_char(day, 'YYYY-MM-DD') AS day
+     FROM habit_days WHERE habit_id = ANY($1::int[])`,
+    [rows.map((r) => r.id)]
+  );
+  const byHabit = new Map();
+  for (const r of dayRows) {
+    if (!byHabit.has(r.habit_id)) byHabit.set(r.habit_id, new Set());
+    byHabit.get(r.habit_id).add(r.day);
+  }
+  return rows.map((h) => {
+    const days = byHabit.get(h.id) || new Set();
+    const doneToday = days.has(day);
+    return { id: h.id, name: h.name, doneToday, streak: streakOf(days, day, doneToday) };
+  });
+}
+
+async function habitFor(userId, id, day) {
+  const { rows } = await pool.query(
+    `SELECT id, name FROM habits WHERE id = $1 AND user_id = $2`,
+    [id, userId]
+  );
+  if (!rows.length) return null;
+  const { rows: dayRows } = await pool.query(
+    `SELECT to_char(day, 'YYYY-MM-DD') AS day FROM habit_days WHERE habit_id = $1`,
+    [id]
+  );
+  const days = new Set(dayRows.map((r) => r.day));
+  const doneToday = days.has(day);
+  return { id: rows[0].id, name: rows[0].name, doneToday, streak: streakOf(days, day, doneToday) };
+}
+
+const wrap = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
+
+// The `?demo=1` populated board: the viewer's own nine habits, written once
+// for the viewing account, days relative to that request's today. Later
+// reloads change nothing and whatever the viewer did to them stays.
+const DEMO_HABITS = [
+  ['read-20-pages', 'Read 20 pages', 9, false],
+  ['stretch-10-minutes', 'Stretch for 10 minutes', 3, false],
+  ['write-journal', 'Write in journal', 0, false],
+  ['meditate-5-minutes', 'Meditate 5 minutes', 15, false],
+  ['water-plants', 'Water the plants', 4, false],
+  ['drink-2-litres', 'Drink 2 litres of water', 6, true],
+  ['practise-guitar', 'Practise guitar', 2, true],
+  ['no-phone-10pm', 'No phone after 10pm', 12, true],
+  ['walk-after-lunch', 'Walk after lunch', 1, true],
+];
+
+async function writeDemo(userId, day) {
+  for (const [key, name, streak, doneToday] of DEMO_HABITS) {
+    const inserted = await pool.query(
+      `INSERT INTO habits (user_id, name, is_demo, demo_key)
+       VALUES ($1, $2, true, $3)
+       ON CONFLICT (user_id, demo_key) DO NOTHING
+       RETURNING id`,
+      [userId, name, key]
+    );
+    if (!inserted.rows.length) continue;
+    const id = inserted.rows[0].id;
+    const days = [];
+    const end = doneToday ? 0 : -1;
+    for (let i = 0; i < streak; i++) days.push(shiftDay(day, end - i));
+    if (days.length) {
+      await pool.query(
+        `INSERT INTO habit_days (habit_id, day)
+         SELECT $1::int, d::date FROM unnest($2::text[]) AS d
+         ON CONFLICT DO NOTHING`,
+        [id, days]
+      );
+    }
+  }
+}
+
+function wantsDemo(req) {
+  return req.query.demo === '1';
+}
+
+app.get('/api/habits', wrap(async (req, res) => {
+  if (!req.user) return res.json({ habits: [] });
+  const day = requestDay(req);
+  if (!day) return res.status(400).json({ error: 'invalid_today' });
+  const demo = wantsDemo(req);
+  if (demo && IS_STAGING) await writeDemo(req.user.id, day);
+  return res.json({ habits: await habitsFor(req.user.id, demo, day) });
+}));
+
+app.post('/api/habits', wrap(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'account_required' });
+  const raw = req.body && typeof req.body.name === 'string' ? req.body.name.trim() : '';
+  if (raw.length < 1 || raw.length > 60) return res.status(400).json({ error: 'invalid_name' });
+  const demo = wantsDemo(req) && IS_STAGING;
+  const { rows } = await pool.query(
+    `INSERT INTO habits (user_id, name, is_demo) VALUES ($1, $2, $3) RETURNING id, name`,
+    [req.user.id, raw, demo]
+  );
+  return res.status(201).json({ id: rows[0].id, name: rows[0].name, doneToday: false, streak: 0 });
+}));
+
+app.delete('/api/habits/:id', wrap(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'account_required' });
+  if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'invalid_id' });
+  const { rowCount } = await pool.query(
+    `DELETE FROM habits WHERE id = $1 AND user_id = $2`,
+    [req.params.id, req.user.id]
+  );
+  if (!rowCount) return res.status(404).json({ error: 'not_found' });
+  return res.json({ ok: true });
+}));
+
+app.put('/api/habits/:id/days/:day', wrap(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'account_required' });
+  if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'invalid_id' });
+  const day = requestDay(req);
+  if (!day) return res.status(400).json({ error: 'invalid_today' });
+  if (req.params.day !== day) return res.status(400).json({ error: 'invalid_day' });
+  const owned = await pool.query(
+    `SELECT id FROM habits WHERE id = $1 AND user_id = $2`,
+    [req.params.id, req.user.id]
+  );
+  if (!owned.rows.length) return res.status(404).json({ error: 'not_found' });
+  await pool.query(
+    `INSERT INTO habit_days (habit_id, day) VALUES ($1, $2::date) ON CONFLICT DO NOTHING`,
+    [req.params.id, day]
+  );
+  return res.json(await habitFor(req.user.id, req.params.id, day));
+}));
+
+app.delete('/api/habits/:id/days/:day', wrap(async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'account_required' });
+  if (!/^\d+$/.test(req.params.id)) return res.status(400).json({ error: 'invalid_id' });
+  const day = requestDay(req);
+  if (!day) return res.status(400).json({ error: 'invalid_today' });
+  if (req.params.day !== day) return res.status(400).json({ error: 'invalid_day' });
+  const owned = await pool.query(
+    `SELECT id FROM habits WHERE id = $1 AND user_id = $2`,
+    [req.params.id, req.user.id]
+  );
+  if (!owned.rows.length) return res.status(404).json({ error: 'not_found' });
+  await pool.query(
+    `DELETE FROM habit_days WHERE habit_id = $1 AND day = $2::date`,
+    [req.params.id, day]
+  );
+  return res.json(await habitFor(req.user.id, req.params.id, day));
+}));
+
 // HTML shell: serve the app if authenticated. Unauthenticated top-level
 // visits (share links pasted into a browser — Sec-Fetch-Dest: document)
 // are sent to the platform's chromeless view of this app, where the shell
@@ -191,10 +417,37 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+// A failed route answers JSON, so the page can tell it apart from an answer.
+app.use((err, req, res, _next) => {
+  console.error(err);
+  if (res.headersSent) return;
+  if (req.path.startsWith('/api/')) return res.status(500).json({ error: 'server_error' });
+  res.status(500).send('Something went wrong.');
+});
+
 async function start() {
+  await ensureSchema();
   const server = app.listen(port, () => console.log(`Listening on :${port}`));
   // Let Envoy retire idle upstream connections at 60s, with a 15s margin.
   server.keepAliveTimeout = 75_000;
+
+  // Stop accepting connections, drain for a few seconds, close the pool.
+  let stopping = false;
+  async function shutdown(signal) {
+    if (stopping) return;
+    stopping = true;
+    console.log(`Received ${signal}, shutting down`);
+    server.close(async () => {
+      try { await pool.end(); } catch (err) { console.error(err); }
+      process.exit(0);
+    });
+    setTimeout(async () => {
+      try { await pool.end(); } catch (err) { console.error(err); }
+      process.exit(0);
+    }, 3000).unref();
+  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 start().catch(err => { console.error(err); process.exit(1); });

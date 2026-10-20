@@ -55,6 +55,8 @@ module.exports = {
         danger: token('danger'),
         'on-danger': token('on-danger'),
         focus: token('focus'), // the keyboard focus ring
+        flame: token('flame'), // streaks: the lit flame pips
+        'flame-off': token('flame-off'), // a streak at 0
       },
       // The type scale: four sizes, and nothing in between.
       fontSize: {
