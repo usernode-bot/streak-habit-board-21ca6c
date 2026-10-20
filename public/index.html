@@ -158,7 +158,7 @@
         <ul class="list" id="todo-list"></ul>
       </div>
       <div id="done-section">
-        <div class="section-label">Done today, tap again to undo</div>
+        <div class="section-label">Done today</div>
         <ul class="list" id="done-list"></ul>
       </div>
     </div>
@@ -264,9 +264,22 @@
           '<button type="button" class="btn-secondary rm" data-action="remove" data-id="' + h.id + '">Remove</button>' +
           '</div>';
       }
-      return '<button type="button" class="list-row hab' + (h.doneToday ? ' is-done' : '') + '"' +
+      if (h.doneToday) {
+        // The filled tick becomes an Undo button at the row's end; the rest
+        // of the row still toggles, so tapping it undoes as it always did.
+        return '<div class="list-row hab is-done">' +
+          '<button type="button" class="hab-tap" data-action="toggle" data-id="' + h.id + '"' +
+          ' aria-pressed="true" aria-label="' + esc(label) + '">' +
+          '<span class="main"><span class="name">' + esc(h.name) + '</span>' + pipsHtml(h.streak) + '</span>' +
+          '<span class="count"><b>' + h.streak + '</b><span>' + dayWord(h.streak) + '</span></span>' +
+          '</button>' +
+          '<button type="button" class="btn-secondary undo" data-action="toggle" data-id="' + h.id + '"' +
+          ' aria-label="Undo ' + esc(h.name) + '">Undo</button>' +
+          '</div>';
+      }
+      return '<button type="button" class="list-row hab"' +
         ' data-action="toggle" data-id="' + h.id + '"' +
-        ' aria-pressed="' + (h.doneToday ? 'true' : 'false') + '"' +
+        ' aria-pressed="false"' +
         ' aria-label="' + esc(label) + '">' +
         '<span class="main"><span class="name">' + esc(h.name) + '</span>' + pipsHtml(h.streak) + '</span>' +
         '<span class="count"><b>' + h.streak + '</b><span>' + dayWord(h.streak) + '</span></span>' +
