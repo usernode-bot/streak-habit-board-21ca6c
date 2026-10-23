@@ -41,5 +41,9 @@
       "path": "/health",
       "expectText": "ok"
     }
-  ]
+  ],
+  "visibility": {
+    "build": "public",
+    "view": "public"
+  }
 }
